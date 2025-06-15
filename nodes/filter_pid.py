@@ -13,6 +13,7 @@ class ObstacleMovementDetector:
   def __init__(self):
     rospy.init_node('filter')
 
+    # Параметры
     self.prev_distance: Optional[float] = 0.0
 
     self.pub = rospy.Publisher("scan_filtered", LaserScan, queue_size=10)
@@ -38,18 +39,24 @@ class ObstacleMovementDetector:
     if not msg.ranges:
         return []
 
+    # 1. Фильтрация некорректных значений
     ranges = np.array(msg.ranges, dtype=np.float32)
 
+    # 1. Убираем NaN и Inf, заменяем на range_max
     ranges[~np.isfinite(ranges)] = msg.range_max
 
+    # 2. Убираем значения вне диапазона
     ranges = np.clip(ranges, msg.range_min, msg.range_max)
 
+    # 3. Скользящее среднее (окно 5 точек), сохраняющее длину массива
     window_size = 5
     kernel = np.ones(window_size) / window_size
     moving_avg = np.convolve(ranges, kernel, mode='same')
 
+    # 4. Медианный фильтр (окно 5 точек)
     median_filtered = scipy.signal.medfilt(moving_avg, kernel_size=5)
 
+    # Дополнительно: снова ограничиваем значения после фильтрации
     median_filtered = np.clip(median_filtered, msg.range_min, msg.range_max)
 
     return median_filtered.tolist()

@@ -14,12 +14,14 @@ class ObstacleMovementDetector:
     rospy.init_node('movement_detector')
 
     self.prev_distance: Optional[float] = None
-    self.angle_tolerance_deg = 2.5  
+    self.angle_tolerance_deg = 2.5  # ± градусы вокруг центрального луча
 
+    # Публикаторы
     self.pub_dist = rospy.Publisher("wall_distance", Float32, queue_size=10)
     self.pub_mot = rospy.Publisher("wall_motion", String, queue_size=10)
     self.marker_pub = rospy.Publisher("visualization_marker", Marker, queue_size=10)
 
+    # Подписчик
     subscriber = rospy.Subscriber("scan_filtered", LaserScan, self.scan_callback)
 
   def scan_callback(self, msg: LaserScan) -> None:
@@ -35,11 +37,13 @@ class ObstacleMovementDetector:
     marker.type = Marker.ARROW
     marker.action = Marker.ADD
 
+    # Начальная точка — начало координат (робот)
     start_point = Point()
     start_point.x = 0.0
     start_point.y = 0.0
     start_point.z = 0.0
 
+    # Конечная точка — направление по центральному лучу
     center_angle = msg.angle_min + (msg.angle_max - msg.angle_min) / 2
     end_point = Point()
     end_point.x = length * np.cos(center_angle)
@@ -49,13 +53,13 @@ class ObstacleMovementDetector:
     marker.points.append(start_point)
     marker.points.append(end_point)
 
-    marker.scale.x = 0.05  
-    marker.scale.y = 0.1   
+    marker.scale.x = 0.05  # Толщина стрелки
+    marker.scale.y = 0.1   # Ширина наконечника
     marker.color.r = 0.0
     marker.color.g = 1.0
     marker.color.b = 0.0
     marker.color.a = 1.0
-    marker.lifetime = rospy.Duration(1)  
+    marker.lifetime = rospy.Duration(1)  # Живёт 1 секунду
 
     self.marker_pub.publish(marker)
 
@@ -69,6 +73,7 @@ class ObstacleMovementDetector:
     currIndex = minIndex + 1
     while currIndex <= maxIndex:
         frontal_ranges.append(msg.ranges[currIndex])
+    # print(minIndex, " ", maxIndex)
     current_distance = msg.ranges[maxIndex]
 
     dist_msg = Float32()
@@ -77,25 +82,30 @@ class ObstacleMovementDetector:
 
     motion_state = ""
 
+    # Определяем состояние движения
     if self.prev_distance is not None:
         delta = current_distance - self.prev_distance
-        if abs(delta) <= 0.03:  
+        if abs(delta) <= 0.03:  # 3 см
             motion_state = "STABLE"
-            self.draw_motion_arrow(msg, 0.0)  
+            self.draw_motion_arrow(msg, 0.0)  # Стрелка нулевой длины или скрыта
         elif delta > 0:
             motion_state = "RECEDING"
-            self.draw_motion_arrow(msg, -0.5)  
+            self.draw_motion_arrow(msg, -0.5)  # От стены
         else:
             motion_state = "APPROACHING"
-            self.draw_motion_arrow(msg, 0.5)   
+            self.draw_motion_arrow(msg, 0.5)   # К стене
     else:
         motion_state = "STABLE"
 
+    # Сохраняем текущее расстояние для следующего шага
     self.prev_distance = current_distance
 
+    # Публикуем состояние движения
     mot_msg = String()
     mot_msg.data = motion_state
     self.pub_mot.publish(mot_msg)
+
+
 
 def main() -> None:
   detector = ObstacleMovementDetector()
